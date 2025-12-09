@@ -919,6 +919,12 @@ public class ZImageControlPipeline {
       MLX.eval(latents)
     }
     request.progressCallback?(ControlProgress(
+      stage: "Denoising",
+      stepIndex: request.steps,
+      totalSteps: request.steps,
+      fractionCompleted: 1.0
+    ))
+    request.progressCallback?(ControlProgress(
       stage: "Decoding",
       stepIndex: request.steps,
       totalSteps: request.steps,
@@ -1237,6 +1243,12 @@ public class ZImageControlPipeline {
       latents = scheduler.step(modelOutput: guidedNoise, timestepIndex: stepIndex, sample: latents)
       MLX.eval(latents)
     }
+    request.progressCallback?(ControlProgress(
+      stage: "Denoising",
+      stepIndex: request.steps,
+      totalSteps: request.steps,
+      fractionCompleted: 1.0
+    ))
     request.progressCallback?(ControlProgress(
       stage: "Decoding",
       stepIndex: request.steps,
