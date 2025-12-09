@@ -83,6 +83,7 @@ public final class ZImagePipeline {
   private var currentLoRAConfig: LoRAConfiguration?
   private var modelSnapshot: URL?
   private var useDynamicLoRA: Bool = false
+  private var activeTransformerOverrideURL: URL?
 
   public init(logger: Logger = Logger(label: "z-image.pipeline"), hubApi: HubApi = .shared) {
     self.logger = logger
@@ -105,6 +106,7 @@ public final class ZImagePipeline {
     currentLoRAConfig = nil
     modelSnapshot = nil
     useDynamicLoRA = false
+    activeTransformerOverrideURL = nil
     GPU.clearCache()
     logger.info("Model unloaded from memory")
   }
@@ -131,6 +133,7 @@ public final class ZImagePipeline {
     currentLoRA = nil
     currentLoRAConfig = nil
     useDynamicLoRA = false
+    activeTransformerOverrideURL = nil
 
     GPU.clearCache()
     logger.info("Transformer unloaded for memory optimization")
@@ -196,6 +199,71 @@ public final class ZImagePipeline {
       return (result.embeddings, result.mask)
     } catch {
       throw PipelineError.textEncoderNotLoaded
+    }
+  }
+
+  private func resolveModelSpecAndOverride(_ modelSpec: String?) -> (baseModelSpec: String?, transformerOverrideURL: URL?) {
+    guard let modelSpec else { return (baseModelSpec: nil, transformerOverrideURL: nil) }
+
+    let candidateURL = URL(fileURLWithPath: modelSpec)
+    var isDir: ObjCBool = false
+    if FileManager.default.fileExists(atPath: candidateURL.path, isDirectory: &isDir) {
+      if !isDir.boolValue && candidateURL.pathExtension == "safetensors" {
+        logger.info("Using transformer override file: \(candidateURL.lastPathComponent)")
+        return (baseModelSpec: nil, transformerOverrideURL: candidateURL)
+      }
+      if isDir.boolValue {
+        let required = [
+          ZImageFiles.transformerConfig,
+          ZImageFiles.textEncoderConfig,
+          ZImageFiles.vaeConfig,
+        ]
+        let hasStructure = required.allSatisfy { FileManager.default.fileExists(atPath: candidateURL.appending(path: $0).path) }
+        if hasStructure {
+          return (baseModelSpec: modelSpec, transformerOverrideURL: nil)
+        }
+
+        let contents = (try? FileManager.default.contentsOfDirectory(at: candidateURL, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        let safes = contents.filter { $0.pathExtension == "safetensors" }
+        if safes.isEmpty {
+          logger.warning("Model path is a directory without expected configs or safetensors: \(modelSpec). Falling back to default model.")
+          return (baseModelSpec: nil, transformerOverrideURL: nil)
+        }
+
+        let preferred = safes.first(where: { $0.lastPathComponent.lowercased().contains("v2") })
+          ?? safes.max(by: { a, b in
+            let sa = (try? a.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let sb = (try? b.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return sa < sb
+          })
+
+        if let preferred {
+          logger.info("Using transformer override file from directory: \(preferred.lastPathComponent)")
+        }
+        return (baseModelSpec: nil, transformerOverrideURL: preferred)
+      }
+
+      return (baseModelSpec: modelSpec, transformerOverrideURL: nil)
+    }
+
+    return (baseModelSpec: modelSpec, transformerOverrideURL: nil)
+  }
+
+  private func applyTransformerOverrideIfNeeded(_ overrideURL: URL?) throws {
+    guard overrideURL != activeTransformerOverrideURL else { return }
+    guard let transformer, let snapshot = modelSnapshot else { throw PipelineError.modelNotLoaded }
+
+    let weightsMapper = ZImageWeightsMapper(snapshot: snapshot, logger: logger)
+    let baseTransformerWeights = try weightsMapper.loadTransformer()
+    ZImageWeightsMapping.applyTransformer(weights: baseTransformerWeights, to: transformer, manifest: nil, logger: logger)
+
+    activeTransformerOverrideURL = nil
+
+    if let overrideURL {
+      logger.info("Applying transformer override weights from: \(overrideURL.lastPathComponent)")
+      let overrideWeights = try weightsMapper.loadTransformer(fromFile: overrideURL, dtype: .bfloat16)
+      ZImageWeightsMapping.applyTransformer(weights: overrideWeights, to: transformer, manifest: nil, logger: logger)
+      activeTransformerOverrideURL = overrideURL
     }
   }
   public struct GenerationProgress: Sendable {
@@ -279,6 +347,7 @@ public final class ZImagePipeline {
     let transformerWeights = try weightsMapper.loadTransformer()
     ZImageWeightsMapping.applyTransformer(weights: transformerWeights, to: trans, manifest: manifest, logger: logger)
     transformer = trans
+    activeTransformerOverrideURL = nil
     if vae == nil {
       progressHandler?(GenerationProgress(stage: .loadingVAE, stepIndex: 0, totalSteps: 1))
       logger.info("Loading VAE...")
@@ -368,9 +437,10 @@ public final class ZImagePipeline {
     if request.height % vaeScale != 0 {
       throw PipelineError.invalidDimensions("Height must be divisible by \(vaeScale) (got \(request.height)). Please adjust to a multiple of \(vaeScale).")
     }
-    let requestedModelId = request.model ?? ZImageRepository.id
+    let resolved = resolveModelSpecAndOverride(request.model)
+    let requestedModelId = resolved.baseModelSpec ?? ZImageRepository.id
     if !isModelLoaded || loadedModelId != requestedModelId {
-      try await loadModel(modelSpec: request.model, progressHandler: progressHandler)
+      try await loadModel(modelSpec: resolved.baseModelSpec, progressHandler: progressHandler)
     }
 
     guard let tokenizer = tokenizer,
@@ -380,6 +450,9 @@ public final class ZImagePipeline {
           let modelConfigs = modelConfigs else {
       throw PipelineError.modelNotLoaded
     }
+
+    try applyTransformerOverrideIfNeeded(resolved.transformerOverrideURL)
+
     if let loraConfig = request.lora {
 
       if currentLoRAConfig != loraConfig {
