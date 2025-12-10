@@ -31,11 +31,11 @@ public enum PipelineUtilities {
 
     public static func decodeLatents(
         _ latents: MLXArray,
-        vae: AutoencoderKL,
+        vae: VAEImageDecoding,
         height: Int,
         width: Int
     ) -> MLXArray {
-        let (decoded, _) = vae.decode(latents)
+        let (decoded, _) = vae.decode(latents, return_dict: false)
         var image = decoded
         if height != decoded.dim(2) || width != decoded.dim(3) {
             var nhwc = image.transposed(0, 2, 3, 1)

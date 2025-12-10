@@ -74,7 +74,7 @@ public final class ZImagePipeline {
   private var tokenizer: QwenTokenizer?
   private var textEncoder: QwenTextEncoder?
   private var transformer: ZImageTransformer2DModel?
-  private var vae: AutoencoderKL?
+  private var vae: VAEImageDecoding?
   private var modelConfigs: ZImageModelConfigs?
   private var quantManifest: ZImageQuantizationManifest?
   private var isModelLoaded: Bool = false
@@ -178,8 +178,8 @@ public final class ZImagePipeline {
     return ZImageTransformer2DModel(configuration: config)
   }
 
-  private func loadVAE(snapshot: URL, config: ZImageVAEConfig) throws -> AutoencoderKL {
-    return AutoencoderKL(configuration: .init(
+  private func loadVAEDecoder(snapshot: URL, config: ZImageVAEConfig) throws -> AutoencoderDecoderOnly {
+    AutoencoderDecoderOnly(configuration: .init(
       inChannels: config.inChannels,
       outChannels: config.outChannels,
       latentChannels: config.latentChannels,
@@ -351,9 +351,10 @@ public final class ZImagePipeline {
     if vae == nil {
       progressHandler?(GenerationProgress(stage: .loadingVAE, stepIndex: 0, totalSteps: 1))
       logger.info("Loading VAE...")
-      let v = try loadVAE(snapshot: snapshot, config: configs.vae)
+      let v = try loadVAEDecoder(snapshot: snapshot, config: configs.vae)
       let vaeWeights = try weightsMapper.loadVAE()
-      ZImageWeightsMapping.applyVAE(weights: vaeWeights, to: v, manifest: manifest, logger: logger)
+      let decoderWeights = vaeWeights.filter { $0.key.hasPrefix("decoder.") }
+      ZImageWeightsMapping.applyVAE(weights: decoderWeights, to: v, manifest: manifest, logger: logger)
       vae = v
     } else {
       logger.info("Reusing cached VAE")
@@ -565,7 +566,7 @@ public final class ZImagePipeline {
     return decoded
   }
 
-  private func decodeLatents(_ latents: MLXArray, vae: AutoencoderKL, height: Int, width: Int) -> MLXArray {
+  private func decodeLatents(_ latents: MLXArray, vae: VAEImageDecoding, height: Int, width: Int) -> MLXArray {
     PipelineUtilities.decodeLatents(latents, vae: vae, height: height, width: width)
   }
 
