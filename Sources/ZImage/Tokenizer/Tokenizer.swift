@@ -321,6 +321,33 @@ public final class QwenTokenizer {
     return prefixTokens + contentTokens + suffixTokens
   }
 
+  public func decode(tokens: [Int]) -> String {
+    tokenizer.decode(tokens: tokens)
+  }
+
+  public var eosTokenId: Int? {
+    tokenizer.eosTokenId
+  }
+
+  public func encodeChatForGeneration(
+    messages: [[String: Any]],
+    maxLength: Int? = nil
+  ) throws -> [Int] {
+    var text = ""
+    for message in messages {
+      guard let role = message["role"] as? String,
+            let content = message["content"] as? String else {
+        continue
+      }
+      text += "<|im_start|>\(role)\n\(content)<|im_end|>\n"
+    }
+    text += "<|im_start|>assistant\n"
+
+    let tokens = encodeFunction(text)
+    let targetLength = min(maxLength ?? self.maxLength, self.maxLength)
+    return Self.trim(tokens, maxLength: targetLength, prefixCount: 0, suffixCount: 0)
+  }
+
   private static func trim(
     _ tokens: [Int],
     maxLength: Int,

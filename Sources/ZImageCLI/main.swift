@@ -43,6 +43,8 @@ struct ZImageCLI {
     var maxSequenceLength = 512
     var loraPath: String?
     var loraScale: Float = 1.0
+    var enhance = false
+    var enhanceMaxTokens = 512
 
     let args = Array(CommandLine.arguments.dropFirst())
     var iterator = args.makeIterator()
@@ -75,6 +77,10 @@ struct ZImageCLI {
         loraPath = nextValue(for: arg, iterator: &iterator)
       case "--lora-scale":
         loraScale = floatValue(for: arg, iterator: &iterator, fallback: 1.0)
+      case "--enhance", "-e":
+        enhance = true
+      case "--enhance-max-tokens":
+        enhanceMaxTokens = intValue(for: arg, iterator: &iterator, minimum: 64, fallback: 512)
       case "--help", "-h":
         printUsage()
         return
@@ -111,7 +117,9 @@ struct ZImageCLI {
       model: model,
       maxSequenceLength: maxSequenceLength,
       loraPath: loraPath,
-      loraScale: loraScale
+      loraScale: loraScale,
+      enhancePrompt: enhance,
+      enhanceMaxTokens: enhanceMaxTokens
     )
 
     let pipeline = ZImagePipeline(logger: logger)
@@ -145,6 +153,8 @@ struct ZImageCLI {
       --max-sequence-length  Maximum sequence length for text encoding (default: 512)
       --lora, -l             LoRA weights path or HuggingFace ID
       --lora-scale           LoRA scale factor (default: 1.0)
+      --enhance, -e          Enhance prompt using LLM before generation
+      --enhance-max-tokens   Max tokens for prompt enhancement (default: 512)
       --help, -h             Show help
 
     Subcommands:
@@ -167,6 +177,7 @@ struct ZImageCLI {
       ZImageCLI -p "a sunset" -m models/z-image-turbo-q8
       ZImageCLI -p "a forest" -m Tongyi-MAI/Z-Image-Turbo
       ZImageCLI -p "a cut a cat" --lora ostris/z_image_turbo_childrens_drawings
+      ZImageCLI -p "a cute cat" --enhance -o enhanced_cat.png
     """)
   }
 

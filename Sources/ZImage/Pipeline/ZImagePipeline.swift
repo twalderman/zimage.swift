@@ -20,6 +20,8 @@ public struct ZImageGenerationRequest {
   public var maxSequenceLength: Int
   public var loraPath: String?
   public var loraScale: Float
+  public var enhancePrompt: Bool
+  public var enhanceMaxTokens: Int
 
   public init(
     prompt: String,
@@ -33,7 +35,9 @@ public struct ZImageGenerationRequest {
     model: String? = nil,
     maxSequenceLength: Int = 512,
     loraPath: String? = nil,
-    loraScale: Float = 1.0
+    loraScale: Float = 1.0,
+    enhancePrompt: Bool = false,
+    enhanceMaxTokens: Int = 512
   ) {
     self.prompt = prompt
     self.negativePrompt = negativePrompt
@@ -47,6 +51,8 @@ public struct ZImageGenerationRequest {
     self.maxSequenceLength = maxSequenceLength
     self.loraPath = loraPath
     self.loraScale = loraScale
+    self.enhancePrompt = enhancePrompt
+    self.enhanceMaxTokens = enhanceMaxTokens
   }
 }
 
@@ -147,7 +153,26 @@ public struct ZImagePipeline {
     let textEncoderWeights = try weightsMapper.loadTextEncoder()
     ZImageWeightsMapping.applyTextEncoder(weights: textEncoderWeights, to: textEncoder, manifest: quantManifest, logger: logger)
 
-    let (promptEmbeds, _) = try encodePrompt(request.prompt, tokenizer: tokenizer, textEncoder: textEncoder, maxLength: request.maxSequenceLength)
+    var finalPrompt = request.prompt
+    if request.enhancePrompt {
+      logger.info("Enhancing prompt using LLM (max tokens: \(request.enhanceMaxTokens))...")
+      let enhanceConfig = PromptEnhanceConfig(
+        maxNewTokens: request.enhanceMaxTokens,
+        temperature: 0.7,
+        topP: 0.9,
+        repetitionPenalty: 1.05
+      )
+      let enhanced = try textEncoder.enhancePrompt(request.prompt, tokenizer: tokenizer, config: enhanceConfig)
+      if enhanced.isEmpty {
+        logger.warning("Prompt enhancement incomplete (need more tokens), using original prompt")
+      } else {
+        logger.info("Enhanced prompt: \(enhanced)")
+        finalPrompt = enhanced
+      }
+      GPU.clearCache()
+    }
+
+    let (promptEmbeds, _) = try encodePrompt(finalPrompt, tokenizer: tokenizer, textEncoder: textEncoder, maxLength: request.maxSequenceLength)
 
     let negativeEmbeds: MLXArray?
     if doCFG {

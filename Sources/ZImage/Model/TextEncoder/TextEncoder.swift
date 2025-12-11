@@ -262,7 +262,8 @@ public final class QwenAttention: Module {
 
   func callAsFunction(
     _ x: MLXArray,
-    mask: MLXFast.ScaledDotProductAttentionMaskMode
+    mask: MLXFast.ScaledDotProductAttentionMaskMode,
+    cache: KVCache? = nil
   ) -> MLXArray {
     let B = x.dim(0)
     let L = x.dim(1)
@@ -275,8 +276,15 @@ public final class QwenAttention: Module {
     keys = kNorm(keys.reshaped(B, L, numKeyValueHeads, headDim)).transposed(0, 2, 1, 3)
     values = values.reshaped(B, L, numKeyValueHeads, headDim).transposed(0, 2, 1, 3)
 
-    queries = rope(queries, offset: 0)
-    keys = rope(keys, offset: 0)
+    let offset = cache?.offset ?? 0
+    queries = rope(queries, offset: offset)
+    keys = rope(keys, offset: offset)
+
+    if let cache = cache {
+      let (cachedKeys, cachedValues) = cache.update(keys: keys, values: values)
+      keys = cachedKeys
+      values = cachedValues
+    }
 
     if numKeyValueHeads != numAttentionHeads {
       keys = expandKeyValue(keys, repeats: numKeyValueGroups)
@@ -337,10 +345,11 @@ public final class QwenEncoderLayer: Module {
 
   func callAsFunction(
     _ x: MLXArray,
-    mask: MLXFast.ScaledDotProductAttentionMaskMode
+    mask: MLXFast.ScaledDotProductAttentionMaskMode,
+    cache: KVCache? = nil
   ) -> MLXArray {
     let normed = inputLayerNorm(x)
-    let r = selfAttention(normed, mask: mask)
+    let r = selfAttention(normed, mask: mask, cache: cache)
     let h = x + r
 
     let postNormed = postAttentionLayerNorm(h)
@@ -446,6 +455,34 @@ extension QwenEncoder {
       tokenIds = tokenIds.asType(.int32)
     }
     return embedTokens(tokenIds)
+  }
+
+  public func forwardCausal(inputIds: MLXArray, cache: [KVCache]?) -> MLXArray {
+    var tokenIds = inputIds
+    if tokenIds.dtype != .int32 {
+      tokenIds = tokenIds.asType(.int32)
+    }
+
+    var h = embedTokens(tokenIds)
+    let mask = createCausalMaskForGeneration(h: h, cache: cache?.first)
+
+    for (i, layer) in layers.enumerated() {
+      h = layer(h, mask: mask, cache: cache?[i])
+    }
+
+    h = norm(h)
+    return embedTokens.asLinear(h)
+  }
+
+  private func createCausalMaskForGeneration(h: MLXArray, cache: KVCache?) -> MLXFast.ScaledDotProductAttentionMaskMode {
+    let n = h.dim(1)
+    if let cache = cache {
+      return cache.makeMask(n: n)
+    }
+    if n == 1 {
+      return .none
+    }
+    return .causal
   }
 }
 
