@@ -251,7 +251,7 @@ public final class ZImagePipeline {
 
   private func applyTransformerOverrideIfNeeded(_ overrideURL: URL?) throws {
     guard overrideURL != activeTransformerOverrideURL else { return }
-    guard let transformer, let snapshot = modelSnapshot else { throw PipelineError.modelNotLoaded }
+    guard let transformer, let snapshot = modelSnapshot, let configs = modelConfigs else { throw PipelineError.modelNotLoaded }
 
     let weightsMapper = ZImageWeightsMapper(snapshot: snapshot, logger: logger)
     let baseTransformerWeights = try weightsMapper.loadTransformer()
@@ -261,7 +261,13 @@ public final class ZImagePipeline {
 
     if let overrideURL {
       logger.info("Applying transformer override weights from: \(overrideURL.lastPathComponent)")
-      let overrideWeights = try weightsMapper.loadTransformer(fromFile: overrideURL, dtype: .bfloat16)
+      var overrideWeights = try weightsMapper.loadTransformer(fromFile: overrideURL, dtype: .bfloat16)
+
+      if let inferredDim = inferTransformerDim(from: overrideWeights), inferredDim != configs.transformer.dim {
+        throw PipelineError.weightsMissing("Transformer override dim \(inferredDim) mismatches model dim \(configs.transformer.dim)")
+      }
+
+      overrideWeights = canonicalizeTransformerOverride(overrideWeights, dim: configs.transformer.dim, logger: logger)
       ZImageWeightsMapping.applyTransformer(weights: overrideWeights, to: transformer, manifest: nil, logger: logger)
       activeTransformerOverrideURL = overrideURL
     }
@@ -592,6 +598,70 @@ public final class ZImagePipeline {
       "mzbac/Z-Image-Turbo-8bit"
     ]
     return zImageIds.contains(model1) && zImageIds.contains(model2)
+  }
+
+  private func inferTransformerDim(from weights: [String: MLXArray]) -> Int? {
+    // Try common norm vectors first
+    if let w = weights["layers.0.attention_norm1.weight"], w.ndim == 1 { return w.dim(0) }
+    if let w = weights["layers.0.ffn_norm1.weight"], w.ndim == 1 { return w.dim(0) }
+    // Try attention projections
+    if let w = weights["layers.0.attention.to_q.weight"], w.ndim == 2 { return w.dim(0) }
+    if let w = weights["layers.0.attention.to_out.0.weight"], w.ndim == 2 { return w.dim(1) }
+    // Scan for any norm weight
+    if let (k, w) = weights.first(where: { $0.key.hasSuffix("attention_norm1.weight") && $0.value.ndim == 1 }) { _ = k; return w.dim(0) }
+    if let (k, w) = weights.first(where: { $0.key.hasSuffix("ffn_norm1.weight") && $0.value.ndim == 1 }) { _ = k; return w.dim(0) }
+    return nil
+  }
+
+  // Canonicalize override checkpoints so their tensor keys match our transformer module names.
+  // Supports SD/ComfyUI-style exports that prefix keys with e.g. "model.diffusion_model.".
+  func canonicalizeTransformerOverride(_ weights: [String: MLXArray], dim: Int, logger: Logger) -> [String: MLXArray] {
+    var out: [String: MLXArray] = [:]
+    for (k, v) in weights {
+      // Strip common root prefixes from external checkpoints.
+      var key = k
+      for prefix in ["model.diffusion_model.", "diffusion_model.", "transformer.", "model."] {
+        if key.hasPrefix(prefix) {
+          key = String(key.dropFirst(prefix.count))
+        }
+      }
+
+      // Map attention.out.weight -> attention.to_out.0.weight
+      if key.hasSuffix(".attention.out.weight") {
+        let newKey = key.replacingOccurrences(of: ".attention.out.weight", with: ".attention.to_out.0.weight")
+        out[newKey] = v
+        continue
+      }
+
+      // Split attention.qkv.weight -> to_q.weight, to_k.weight, to_v.weight
+      if key.hasSuffix(".attention.qkv.weight") {
+        if v.ndim == 2 && v.dim(0) == dim * 3 && v.dim(1) == dim {
+          let q = v[0 ..< dim, 0...]
+          let kW = v[dim ..< 2*dim, 0...]
+          let vW = v[2*dim ..< 3*dim, 0...]
+          let base = key.replacingOccurrences(of: ".attention.qkv.weight", with: "")
+          out["\(base).attention.to_q.weight"] = q
+          out["\(base).attention.to_k.weight"] = kW
+          out["\(base).attention.to_v.weight"] = vW
+        } else {
+          logger.warning("Unexpected qkv shape for \(key): \(v.shape) (expected [\(dim*3), \(dim)])")
+        }
+        continue
+      }
+
+      // Passthrough other keys
+      var mapped = key
+      // Remap final_layer.* -> all_final_layer.2-1.* so our loader can pick them up
+      if mapped.hasPrefix("final_layer.") {
+        mapped = mapped.replacingOccurrences(of: "final_layer.", with: "all_final_layer.2-1.")
+      }
+      // Remap x_embedder.* -> all_x_embedder.2-1.*
+      if mapped.hasPrefix("x_embedder.") {
+        mapped = mapped.replacingOccurrences(of: "x_embedder.", with: "all_x_embedder.2-1.")
+      }
+      out[mapped] = v
+    }
+    return out
   }
 
 }
