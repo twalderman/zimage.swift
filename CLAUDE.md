@@ -29,40 +29,41 @@ xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -enableCodeCo
 
 ### Core Components
 
-**ZImage Library** (`Sources/ZImage/`):
-- `Pipeline/ZImagePipeline.swift` - Main generation pipeline: loads models, runs denoising loop, decodes latents
-- `Pipeline/ZImageControlPipeline.swift` - ControlNet-conditioned generation pipeline
-- `Pipeline/FlowMatchScheduler.swift` - Flow matching Euler scheduler for diffusion steps
+**Application Layer** (`Sources/ZImageCLI`):
+- `ZImageCLI`: Entry point for generation, controlnet, and quantization commands. Handles argument parsing and global GPU settings.
 
-**Model Components** (`Sources/ZImage/Model/`):
-- `Transformer/ZImageTransformer2D.swift` - Main DiT transformer with noise/context refiners and unified attention layers
-- `Transformer/ZImageTransformerBlock.swift` - Self-attention block with optional modulation
-- `TextEncoder/TextEncoder.swift` - Qwen-based text encoder
-- `VAE/AutoencoderKL.swift` - VAE decoder for latent-to-image conversion
+**Pipeline Layer** (`Sources/ZImage/Pipeline`):
+- `ZImagePipeline`: Orchestrates Text-to-Image generation. Manages dynamic model loading/unloading, LoRA application, and the denoising loop.
+- `ZImageControlPipeline`: Extends generation with ControlNet conditioning (image/mask inputs) and Inpainting.
+- `FlowMatchScheduler`: Implements Flow Matching Euler scheduler with "Dynamic Shifting" for resolution-dependent noise schedules.
 
-**Weights System** (`Sources/ZImage/Weights/`):
-- `ZImageWeightsMapper.swift` - Maps safetensor files to model components
-- `WeightsMapping.swift` - Applies loaded weights to model layers with quantization support
-- `LoRALoader.swift` - Loads and applies LoRA weights from local or HuggingFace
-- `ModelConfigs.swift` - JSON config parsing for transformer/VAE/scheduler/text encoder
+**Model Layer** (`Sources/ZImage/Model`):
+- **TextEncoder**: Qwen-based transformer. Acts as both an Encoder (for conditioning) and a Generator (for Prompt Enhancement via LLM).
+- **Transformer**: The Diffusion Transformer (DiT).
+  - `ZImageTransformer2DModel`: Hybrid architecture with separate "refiner" streams (Noise & Context) that merge into joint attention blocks.
+  - `ZImageControlTransformer2DModel`: Adds ControlNet blocks to the base DiT architecture.
+- **VAE**: `AutoencoderKL` for encoding/decoding images to/from latents. Supports `AutoencoderDecoderOnly` for inference optimization.
 
-**CLI** (`Sources/ZImageCLI/main.swift`):
-- Basic generation: `ZImageCLI -p "prompt" -o output.png`
-- ControlNet: `ZImageCLI control -p "prompt" -c control.jpg --cw weights.safetensors`
-- Quantize: `ZImageCLI quantize -i input_dir -o output_dir --bits 8`
+**Infrastructure** (`Sources/ZImage/Weights`, `/Quantization`, `/LoRA`):
+- **Weights**: Handles downloading from Hugging Face (`HubSnapshot`) and parsing `.safetensors`.
+- **Quantization**: `ZImageQuantizer` supports 4-bit and 8-bit group-wise quantization (Affine/MXFP4) for reduced memory footprint.
+- **LoRA**: `LoRAApplicator` supports both baked-in and dynamic (runtime) adapters, including LoKr (Kronecker product) and quantization compatibility.
 
 ### Key Data Flow
 
-1. Text prompt → QwenTokenizer → QwenTextEncoder → prompt embeddings
-2. Random latents + timestep → ZImageTransformer2D (noise/context refiners → main layers) → noise prediction
-3. FlowMatchEulerScheduler applies Euler step to update latents
-4. After N steps: latents → AutoencoderKL.decode → RGB image
+1. **Enhancement (Optional)**: Text prompt → QwenTextEncoder (LLM Mode) → Enhanced Prompt.
+2. **Encoding**: Enhanced Prompt → QwenTokenizer → QwenTextEncoder → Text Embeddings.
+3. **Initialization**: Random Gaussian Latents generated.
+4. **Denoising Loop**:
+   - Latents + Timestep + Text Embeddings → `ZImageTransformer2D` (Refiners → Joint Blocks) → Noise Prediction.
+   - `FlowMatchEulerScheduler` updates latents based on prediction.
+5. **Decoding**: Refined Latents → `AutoencoderKL` (Decoder) → RGB Image.
 
 ### Test Structure
 
-- `Tests/ZImageTests/` - Unit tests (scheduler, config parsing, image I/O)
-- `Tests/ZImageIntegrationTests/` - Tests requiring model weights (pipeline, ControlNet, LoRA)
-- `Tests/ZImageE2ETests/` - End-to-end CLI tests
+- `Tests/ZImageTests/` - Unit tests (scheduler, config parsing, image I/O).
+- `Tests/ZImageIntegrationTests/` - Integration tests requiring model weights (pipeline, ControlNet, LoRA).
+- `Tests/ZImageE2ETests/` - End-to-end CLI tests (builds and runs the actual binary).
 
 ## Requirements
 
