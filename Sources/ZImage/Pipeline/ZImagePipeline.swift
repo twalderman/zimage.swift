@@ -412,6 +412,8 @@ public final class ZImagePipeline {
       if let inferredDim = inferTransformerDim(from: transformerWeights), inferredDim != configs.transformer.dim {
         throw PipelineError.weightsMissing("AIO transformer dim \(inferredDim) mismatches model dim \(configs.transformer.dim)")
       }
+      try validateStrictAIOTransformerWeights(transformerWeights, config: configs.transformer)
+      try validateAIOTransformerCoverage(transformerWeights, transformer: trans)
       ZImageWeightsMapping.applyTransformer(weights: transformerWeights, to: trans, manifest: nil, logger: logger)
       transformer = trans
 
@@ -727,6 +729,10 @@ public final class ZImagePipeline {
         }
       }
 
+      // Some checkpoints use q_norm/k_norm naming; base Z-Image uses norm_q/norm_k.
+      key = key.replacingOccurrences(of: ".attention.q_norm.weight", with: ".attention.norm_q.weight")
+      key = key.replacingOccurrences(of: ".attention.k_norm.weight", with: ".attention.norm_k.weight")
+
       // Map attention.out.weight -> attention.to_out.0.weight
       if key.hasSuffix(".attention.out.weight") {
         let newKey = key.replacingOccurrences(of: ".attention.out.weight", with: ".attention.to_out.0.weight")
@@ -763,6 +769,54 @@ public final class ZImagePipeline {
       out[mapped] = v
     }
     return out
+  }
+
+  func validateStrictAIOTransformerWeights(_ weights: [String: MLXArray], config: ZImageTransformerConfig) throws {
+    var required: [String] = [
+      "layers.0.attention.to_q.weight",
+      "layers.0.attention.to_out.0.weight",
+    ]
+
+    if config.qkNorm {
+      required.append(contentsOf: [
+        "layers.0.attention.norm_q.weight",
+        "layers.0.attention.norm_k.weight",
+      ])
+    }
+
+    let missing = required.filter { weights[$0] == nil }
+    if !missing.isEmpty {
+      throw PipelineError.weightsMissing(
+        "AIO checkpoint missing required transformer tensors after canonicalization: \(missing.joined(separator: ", ")). Use --force-transformer-override-only to treat it as transformer-only."
+      )
+    }
+  }
+
+  func validateAIOTransformerCoverage(
+    _ weights: [String: MLXArray],
+    transformer: ZImageTransformer2DModel,
+    minimumCoverage: Double = 0.99
+  ) throws {
+    var auditWeights = weights
+    if let w = weights["cap_embedder.0.weight"] { auditWeights["capEmbedNorm.weight"] = w }
+    if let w = weights["cap_embedder.1.weight"] { auditWeights["capEmbedLinear.weight"] = w }
+    if let w = weights["cap_embedder.1.bias"] { auditWeights["capEmbedLinear.bias"] = w }
+
+    let audit = WeightsAudit.audit(module: transformer, weights: auditWeights, logger: logger, sample: 10)
+    let total = audit.matched + audit.missing.count
+    guard total > 0 else {
+      throw PipelineError.weightsMissing("AIO transformer audit failed: transformer contains no parameters.")
+    }
+
+    let coverage = Double(audit.matched) / Double(total)
+    guard coverage >= minimumCoverage else {
+      let percent = Int((coverage * 100.0).rounded())
+      let missingSample = audit.missing.prefix(10).joined(separator: ", ")
+      let suffix = audit.missing.count > 10 ? ", ..." : ""
+      throw PipelineError.weightsMissing(
+        "AIO transformer weights coverage too low: matched \(audit.matched)/\(total) (\(percent)%). Missing (sample): \(missingSample)\(suffix). Use --force-transformer-override-only to treat it as transformer-only."
+      )
+    }
   }
 
 }

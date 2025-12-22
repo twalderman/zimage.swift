@@ -62,5 +62,17 @@ final class TransformerOverrideCanonicalizationTests: XCTestCase {
     let result = pipeline.canonicalizeTransformerOverride(input, dim: 2, logger: Logger(label: "test"))
     XCTAssertNotNil(result["all_final_layer.2-1.adaLN_modulation.1.weight"])
   }
-}
 
+  func testRenamesQKNormKeys() {
+    let pipeline = ZImagePipeline(logger: Logger(label: "test"))
+    let w = MLXArray([Float(0.0), Float(1.0)]).asType(.bfloat16)
+    let input: [String: MLXArray] = [
+      "model.diffusion_model.layers.0.attention.q_norm.weight": w,
+      "model.diffusion_model.layers.0.attention.k_norm.weight": w,
+    ]
+
+    let result = pipeline.canonicalizeTransformerOverride(input, dim: 2, logger: Logger(label: "test"))
+    XCTAssertNotNil(result["layers.0.attention.norm_q.weight"])
+    XCTAssertNotNil(result["layers.0.attention.norm_k.weight"])
+  }
+}

@@ -30,15 +30,19 @@ struct WeightsAudit {
       }
     }
 
-    let missingSample = Array(missingKeys.prefix(sample))
-    let extraSample = Array(remaining.prefix(sample))
+    let missingSample = Array(missingKeys.prefix(max(0, sample)))
+    let extraSample = Array(Array(remaining).sorted().prefix(max(0, sample)))
 
     logger.info("\(prefix.isEmpty ? "module" : prefix) weights audit -> matched: \(matched), missing: \(missingKeys.count), extra: \(remaining.count)")
     if !missingKeys.isEmpty {
-      logger.warning("Missing weights: \(missingKeys.joined(separator: ", "))")
+      let suffix = missingKeys.count > missingSample.count ? ", ..." : ""
+      let sampleText = missingSample.isEmpty ? "" : " (sample: \(missingSample.joined(separator: ", "))\(suffix))"
+      logger.warning("Missing weights: \(missingKeys.count)\(sampleText)")
     }
     if !remaining.isEmpty {
-      logger.warning("Extra weights: \(Array(remaining).sorted().joined(separator: ", "))")
+      let suffix = remaining.count > extraSample.count ? ", ..." : ""
+      let sampleText = extraSample.isEmpty ? "" : " (sample: \(extraSample.joined(separator: ", "))\(suffix))"
+      logger.info("Extra weights: \(remaining.count)\(sampleText)")
     }
 
     return Summary(matched: matched, missing: missingKeys, extra: Array(remaining))
