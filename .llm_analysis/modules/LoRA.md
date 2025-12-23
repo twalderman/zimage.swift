@@ -33,3 +33,27 @@ Provides support for Low-Rank Adaptation (LoRA) and Low-Rank Kronecker Product (
 
 ## Unique Characteristics
 - **Quantization Aware**: The dynamic implementation allows applying high-precision (Float16/32) LoRA adapters on top of low-precision (Int4/8) quantized base weights without dequantizing the base model. This is critical for running on consumer hardware (Macs with limited RAM).
+
+## Code Quality Observations
+
+### Sources/ZImage/LoRA/LoRAApplicator.swift
+- **Purpose**: Applies LoRA (Low-Rank Adaptation) weights to the model.
+- **Capabilities**:
+  - **Static Merging**: Fuses weights permanently.
+  - **Dynamic Application**: Swaps layers for `LoRALinear`/`LoRAQuantizedLinear` at runtime.
+  - **LoKr Support**: Handles LyCORIS/LoKr format (Kronecker product).
+  - **Quantization Support**: Can apply LoRA on top of quantized base weights (dequantize -> merge -> requantize).
+
+### Sources/ZImage/LoRA/LoRAWeightLoader.swift
+- **Purpose**: Loads LoRA weights.
+- **Observations**:
+  - Supports local paths and HuggingFace IDs.
+  - Heuristic detection of Down/Up pairs.
+  - Parsing logic for LoKr weights.
+
+### Sources/ZImage/LoRA/LoRAKeyMapper.swift
+- **Purpose**: Translates external LoRA key formats (diffusers, kohya) to internal model keys.
+- **Observations**:
+  - Large hardcoded dictionaries.
+  - Regex-like string replacement logic.
+  - Critical for compatibility but high maintenance.

@@ -1,7 +1,7 @@
 # Module: Weights (`Sources/ZImage/Weights`)
 
 ## Purpose
-This module handles the discovery, downloading (via Hugging Face Hub), mapping, and loading of model weights into the application's memory. It bridges the gap between on-disk artifacts (SafeTensors, JSON configs) and runtime MLX arrays.
+This module handles the discovery, downloading (via Hugging Face Hub), mapping, and loading of model weights into the application's memory. It bridges the gap between the on-disk artifacts (SafeTensors, JSON configs) and the runtime MLX arrays.
 
 ## Key Components
 
@@ -59,3 +59,58 @@ This module handles the discovery, downloading (via Hugging Face Hub), mapping, 
 2. `ZImageWeightsMapper(snapshot: url)` is instantiated.
 3. `mapper.loadTransformer()` / `mapper.loadVAE()` is called.
 4. Raw dictionaries `[String: MLXArray]` are passed to `ZImageWeightsMapping.apply...` or `ZImageWeightsParameters` to be injected into the instantiated model.
+
+## Code Quality Observations
+
+### Sources/ZImage/Weights/ModelConfigs.swift
+- **Purpose**: Defines configuration structures for model components (Transformer, VAE, Scheduler, TextEncoder).
+- **Observations**:
+  - `Decodable` structs mapping to JSON configs.
+  - Includes helper computed properties like `vaeScaleFactor`.
+
+### Sources/ZImage/Weights/ModelPaths.swift
+- **Purpose**: Defines default model paths and file resolution logic.
+- **Key Components**:
+  - `ZImageRepository`: Hardcoded default ID ("Tongyi-MAI/Z-Image-Turbo").
+  - `ZImageFiles`: Filenames for config/weights.
+  - `resolveWeights`: Robust logic to find weight shards (preferring index.json, falling back to patterns).
+  - `shardAwareLess`: Custom sorting for sharded files (e.g., "model-00001-of-00005").
+
+### Sources/ZImage/Weights/WeightsMapping.swift
+- **Purpose**: logic to apply loaded weights to MLX models.
+- **Key Functions**:
+  - `partition`: Splits flat dictionary into component-specific dictionaries.
+  - `applyTransformer`/`applyTextEncoder`/`applyVAE`: Updates model parameters.
+  - Key remapping logic (e.g., removing `transformer.` prefix).
+
+### Sources/ZImage/Weights/ZImageWeightsMapper.swift
+- **Purpose**: High-level orchestrator for weight loading.
+- **Key Responsibilities**:
+  - Detects quantization.
+  - Loads from standard or quantized sources.
+  - Loads ControlNet weights.
+  - Uses `SafeTensorsReader`.
+- **Observations**:
+  - Handles both standard and quantized loading paths transparently.
+
+### Sources/ZImage/Weights/SafeTensorsReader.swift
+- **Purpose**: Custom implementation of SafeTensors file reading.
+- **Observations**:
+  - Uses memory mapping (`Data(contentsOf: ... .mappedIfSafe)`).
+  - Manually parses header JSON and calculates offsets.
+  - Supports multiple data types (F32, F16, BF16, etc.).
+  - Seems robust and self-contained.
+
+### Sources/ZImage/Weights/AIOCheckpoint.swift
+- **Purpose**: Handling "All-In-One" single-file checkpoints.
+- **Observations**:
+  - Heuristic detection of AIO files.
+  - Logic to split AIO tensors into components based on key prefixes.
+  - Hardcoded logic to find text encoder prefix (`text_encoders.<name>.transformer...`).
+
+### Sources/ZImage/Weights/ModelResolution.swift
+- **Purpose**: Resolving model locations (Local vs HuggingFace) and downloading.
+- **Observations**:
+  - Uses `Hub` library for downloading.
+  - Custom caching logic `findCachedModel` to locate snapshots.
+  - `isHuggingFaceModelId` validation logic.

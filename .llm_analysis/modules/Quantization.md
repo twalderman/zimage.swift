@@ -28,3 +28,16 @@ Provides tools to compress the model weights into lower precision (4-bit, 8-bit)
 ## Data Flow
 - **Offline (CLI)**: `ZImageQuantizer.quantizeAndSave(...)` -> Produces `quantization.json` + `*.safetensors`.
 - **Runtime**: `ZImageWeightsMapper` detects `quantization.json` -> calls `ZImageQuantizer.applyQuantization(...)` -> Model is ready for loading quantized weights.
+
+## Code Quality Observations
+
+### Sources/ZImage/Quantization/ZImageQuantization.swift
+- **Purpose**: Quantizes models (4-bit/8-bit) and saves them.
+- **Capabilities**:
+  - **Full Model Quantization**: Transformer, TextEncoder, VAE (though VAE usually skipped or 8-bit).
+  - **ControlNet Quantization**: Specialized path for ControlNet.
+  - **Sharding**: Manually handles splitting weights into shards (`model-00001-of-XXXXX.safetensors`).
+- **Observations**:
+  - Uses `MLX.quantized` API.
+  - Generates a `quantization.json` manifest.
+  - Duplication between general quantization and ControlNet quantization logic.

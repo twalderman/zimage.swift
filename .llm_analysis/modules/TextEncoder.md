@@ -31,3 +31,21 @@ This module implements the Qwen-based text encoder used to condition the diffusi
 1. **Prompt Enhancement (Optional)**: User input -> `enhancePrompt` -> Expanded Text.
 2. **Conditioning**: Expanded Text -> `encodeForZImage` -> Embeddings (Second-to-last layer).
 3. **Multimodal (Optional)**: Image + Text -> `encodeJoint` -> Hybrid Embeddings.
+
+## Code Quality Observations
+
+### Sources/ZImage/Model/TextEncoder/TextEncoder.swift
+- **Purpose**: Qwen-based Text Encoder.
+- **Roles**:
+  1.  **Embedding Provider**: Extracts hidden states (2nd to last layer) for DiT conditioning.
+  2.  **Prompt Enhancer**: Can generate text autoregressively to refine user prompts.
+- **Key Methods**:
+  - `encodeForZImage`: Specialized extraction logic.
+  - `enhancePrompt`: Uses LLM generation to rewrite prompts.
+  - `encodeJoint`: Multimodal support (replacing placeholder tokens with image embeddings).
+
+### Sources/ZImage/Model/TextEncoder/LLMGeneration/QwenGeneration.swift
+- **Purpose**: Autoregressive generation logic for Qwen.
+- **Observations**:
+  - **Hardcoded System Prompt**: `peSystemPrompt` defines the persona for prompt enhancement ("Logic Prison Vision Artist").
+  - **Generation Loop**: Standard `generate` function with sampling.

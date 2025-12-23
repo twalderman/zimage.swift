@@ -43,3 +43,48 @@ Orchestrates the end-to-end image generation process. It ties together the Model
 - Relies on all `Sources/ZImage/Model` components.
 - Uses `HubApi` for model resolution.
 - Uses `QwenImageIO` for saving results.
+
+## Code Quality Observations (from Batch 1 & 6 Analysis)
+
+### Sources/ZImage/Pipeline/ZImagePipeline.swift
+- **Purpose**: Main text-to-image generation pipeline.
+- **Key Responsibilities**:
+  - Model loading/unloading (TextEncoder, Transformer, VAE, Tokenizer).
+  - Memory management (explicit `unload` methods, `GPU.clearCache`).
+  - Generation loop (Scheduler stepping).
+  - Weight loading and canonicalization (handling AIO checkpoints, overrides).
+- **Observations**:
+  - **Complexity**: High. Handles file resolution, weight mapping, memory monitoring, and generation logic all in one place.
+  - **Hardcoded Values**: Contains hardcoded model IDs (`areZImageVariants`).
+  - **Duplication**: `canonicalizeTransformerOverride` logic is complex and specific.
+  - **Performance**: Has specific optimizations for memory (unloading components when not needed).
+
+### Sources/ZImage/Pipeline/ZImageControlPipeline.swift
+- **Purpose**: Generation pipeline with ControlNet support.
+- **Key Responsibilities**:
+  - Similar to `ZImagePipeline` but adds `ControlNet` context (control images, masks).
+  - Handles `inpaint` logic.
+- **Observations**:
+  - **High Duplication**: Significant overlap with `ZImagePipeline` (init, loading, memory management, scheduler loop).
+  - **Internal Types**: Defines `ControlProgress` and `ZImageControlGenerationRequest` which are very similar to base pipeline equivalents.
+  - **Weight Mapping**: Contains `ZImageControlWeightsMapping` enum with weight application logic. This seems misplaced; should be in `Weights` module.
+
+### Sources/ZImage/Pipeline/PipelineSnapshot.swift
+- **Purpose**: Helper to prepare model files (download/resolve).
+- **Observations**:
+  - Simple wrapper around `ModelResolution`.
+  - Defines required file patterns.
+
+### Sources/ZImage/Pipeline/FlowMatchScheduler.swift
+- **Purpose**: Diffusion noise scheduler (Flow Matching Euler).
+- **Observations**:
+  - Clean implementation of the math.
+  - Supports dynamic time shifting.
+
+### Sources/ZImage/Pipeline/PipelineUtilities.swift
+- **Purpose**: Shared helpers for pipelines.
+- **Key Functions**:
+  - `encodePrompt`: Wraps tokenization + encoding.
+  - `decodeLatents`: Wraps VAE decode + image denormalization.
+- **Observations**:
+  - Reduces some duplication between standard and control pipelines.

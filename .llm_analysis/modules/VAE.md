@@ -33,3 +33,15 @@ Implements the Variational Autoencoder (VAE) used to compress images into latent
 ## Implementation Details
 - **Channel Ordering**: Handles the impedance mismatch between PyTorch weights (Channel First) and MLX operations (Channel Last) via transpositions.
 - **MLXNN**: Uses `MLXNN.Upsample` with nearest neighbor interpolation.
+
+## Code Quality Observations
+
+### Sources/ZImage/Model/VAE/AutoencoderKL.swift
+- **Purpose**: Variational Autoencoder (VAE) for latent-pixel conversion.
+- **Components**:
+  - `VAEEncoder`: Compresses image to latents.
+  - `VAEDecoder`: Reconstructs image from latents.
+  - `AutoencoderDecoderOnly`: Optimization for inference pipelines.
+- **Observations**:
+  - Standard ResNet+Attention VAE architecture.
+  - Clean modular structure (UpBlock, DownBlock, MidBlock).

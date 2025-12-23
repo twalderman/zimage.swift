@@ -19,3 +19,11 @@ Wraps the Hugging Face `Tokenizers` library to provide text tokenization for the
 ## Dependencies
 - `Sources/ZImage/Tokenizer` -> `Tokenizers` (swift-transformers)
 - `Sources/ZImage/Tokenizer` -> `MLX`
+
+## Code Quality Observations
+
+### Sources/ZImage/Tokenizer/Tokenizer.swift
+- **Purpose**: Wrapper around `swift-transformers` Tokenizer for Qwen.
+- **Observations**:
+  - **Special Tokens**: Handles Qwen specific tokens (`<|im_start|>`, etc.).
+  - **Dual Mode**: `encodeChat` (for enhancement) vs `encodePlain` (for conditioning).

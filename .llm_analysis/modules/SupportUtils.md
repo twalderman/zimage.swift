@@ -25,3 +25,18 @@ Provides essential utilities for image processing and defines static metadata fo
 - Pipelines use `QwenImageIO` to preprocess user images before feeding them to the VAE.
 - Pipelines use `QwenImageIO` to save the generated `MLXArray` output as PNG files.
 - `ZImageModelMetadata` is likely accessed during pipeline initialization to set default parameters.
+
+## Code Quality Observations (from Batch 2 & 6 Analysis)
+
+### Sources/ZImage/Support/ModelMetadata.swift
+- **Purpose**: Static constants defining the Z-Image architecture.
+- **Observations**:
+  - Hardcoded dimensions (hidden sizes, layer counts, recommended resolutions).
+  - Limits library generality to this specific model architecture.
+
+### Sources/ZImage/Util/ImageIO.swift
+- **Purpose**: Image loading, saving, and resizing.
+- **Dependencies**: `CoreGraphics`, `ImageIO`.
+- **Observations**:
+  - **Manual Algorithms**: Contains a full Swift implementation of Lanczos resampling (`resizeLanczos`, `makeContributions`). This is likely to match PIL/PyTorch behavior exactly but reinvents OS capabilities.
+  - **Platform Lock**: Heavily tied to Apple frameworks (`CGImage`, `CGContext`).
