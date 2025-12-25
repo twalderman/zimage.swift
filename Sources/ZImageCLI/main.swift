@@ -444,8 +444,8 @@ struct ZImageCLI {
 
     Examples:
       # From HuggingFace
-      ZImageCLI quantize-controlnet -i alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0 \\
-        --file Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors -o controlnet-2.1-q8 --verbose
+      ZImageCLI quantize-controlnet -i alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1 \\
+        --file Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors -o controlnet-2.1-q8 --verbose
 
       # From local directory
       ZImageCLI quantize-controlnet -i ./controlnet-union -o ./controlnet-union-q8 --verbose
@@ -636,7 +636,7 @@ struct ZImageCLI {
       --mask, --mask-image      Mask image for inpainting (white=fill, black=preserve)
       --control-scale, --cs     Control context scale (default: 0.75, recommended: 0.65-0.90)
       --controlnet-weights, --cw Path to controlnet safetensors or HuggingFace ID (required)
-      --control-file, --cf      Specific safetensors filename within repo (e.g., "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors")
+      --control-file, --cf      Specific safetensors filename within repo (e.g., "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors")
       --width, -W               Output width (default \(ZImageModelMetadata.recommendedWidth))
       --height, -H              Output height (default \(ZImageModelMetadata.recommendedHeight))
       --steps, -s               Inference steps (default \(ZImageModelMetadata.recommendedInferenceSteps), increase for higher control scale)
@@ -662,18 +662,18 @@ struct ZImageCLI {
     Examples:
       # T2I with pose control using v2.1 weights (recommended)
       ZImageCLI control -p "a woman on a beach" -c pose.jpg \\
-        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0 \\
-        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors
+        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1 \\
+        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors
 
       # I2I inpainting with pose control
       ZImageCLI control -p "a dancer" -c pose.jpg -i photo.jpg --mask mask.png \\
-        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0 \\
-        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors --cs 0.75 -s 25
+        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1 \\
+        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors --cs 0.75 -s 25
 
       # Inpainting without control guidance
       ZImageCLI control -p "a cat sitting" -i photo.jpg --mask mask.png \\
-        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0 \\
-        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors
+        --cw alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1 \\
+        --cf Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors
 
       # Using local controlnet weights
       ZImageCLI control -p "a forest path" -c depth.jpg --cs 0.7 \\

@@ -60,8 +60,8 @@ final class ControlNetIntegrationTests: XCTestCase {
       steps: 9,
       outputPath: tempOutput,
       model: "mzbac/z-image-turbo-8bit",
-      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors"
     )
 
     let outputURL = try await pipeline.generate(request)
@@ -84,8 +84,8 @@ final class ControlNetIntegrationTests: XCTestCase {
       steps: 9,
       outputPath: tempOutput,
       model: "mzbac/z-image-turbo-8bit",
-      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors"
     )
 
     let outputURL = try await pipeline.generate(request)
@@ -108,8 +108,8 @@ final class ControlNetIntegrationTests: XCTestCase {
       steps: 9,
       outputPath: tempOutput,
       model: "mzbac/z-image-turbo-8bit",
-      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors"
     )
 
     let outputURL = try await pipeline.generate(request)
@@ -144,8 +144,8 @@ final class ControlNetIntegrationTests: XCTestCase {
       seed: 43,
       outputPath: tempOutput,
       model: "mzbac/z-image-turbo-8bit",
-      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0",
-      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+      controlnetWeights: "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+      controlnetWeightsFile: "Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors"
     )
 
     let outputURL = try await pipeline.generate(request)

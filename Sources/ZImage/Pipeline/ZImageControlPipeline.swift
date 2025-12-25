@@ -1319,7 +1319,7 @@ public class ZImageControlPipeline {
       )
       return try loadControlnetFromDirectory(snapshot, dtype: dtype, preferredFile: preferredFile)
     }
-    throw PipelineError.weightsMissing("Invalid controlnet spec: \(controlnetSpec). Provide a local .safetensors path, directory, or HuggingFace model ID (e.g., alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0)")
+    throw PipelineError.weightsMissing("Invalid controlnet spec: \(controlnetSpec). Provide a local .safetensors path, directory, or HuggingFace model ID (e.g., alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1)")
   }
   private func loadControlnetFromDirectory(_ directory: URL, dtype: DType, preferredFile: String? = nil) throws -> ControlnetWeightsResult {
     let fm = FileManager.default

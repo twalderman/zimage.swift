@@ -113,8 +113,8 @@ Generate images with ControlNet conditioning using Canny, HED, Depth, Pose, or M
 ZImageCLI control \
   --prompt "A hyper-realistic close-up portrait of a leopard" \
   --control-image canny_edges.jpg \
-  --controlnet-weights alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.0 \
-  --control-file Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors \
+  --controlnet-weights alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1 \
+  --control-file Z-Image-Turbo-Fun-Controlnet-Union-2.1-8steps.safetensors \
   --control-scale 0.75 \
   --output leopard.png
 ```
