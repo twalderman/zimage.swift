@@ -4,7 +4,7 @@ import MLX
 
 /// Performance tests for Z-Image pipeline.
 /// Tracks inference time, memory usage, and per-component breakdown.
-/// Run with: xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -only-testing:ZImageIntegrationTests/PerformanceTests -parallel-testing-enabled NO
+/// Run with: xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -only-testing:ZImageIntegrationTests/PerformanceTests -parallel-testing-enabled NO
 final class PerformanceTests: XCTestCase {
 
   /// Shared pipeline instance to avoid reloading model for each test

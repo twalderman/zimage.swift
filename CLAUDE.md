@@ -13,16 +13,16 @@ Z-Image.swift is a Swift port of [Z-Image-Turbo](https://huggingface.co/Tongyi-M
 xcodebuild -scheme ZImageCLI -configuration Release -destination 'platform=macOS' -derivedDataPath .build/xcode
 
 # Run all tests (use -enableCodeCoverage NO to avoid creating default.profraw)
-xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -enableCodeCoverage NO
+xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -enableCodeCoverage NO
 
 # Run specific test target
-xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests
+xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests
 
 # Run a single test class
-xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests/FlowMatchSchedulerTests
+xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests/FlowMatchSchedulerTests
 
 # Run a single test method
-xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests/FlowMatchSchedulerTests/testTimestepsDecreasing
+xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -enableCodeCoverage NO -only-testing:ZImageTests/FlowMatchSchedulerTests/testTimestepsDecreasing
 ```
 
 ## Architecture

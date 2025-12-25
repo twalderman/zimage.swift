@@ -6,7 +6,7 @@ import Logging
 
 /// Integration tests for ZImagePipeline using real model inference.
 /// These tests require downloading the 8-bit quantized model (~7.5GB).
-/// Run with: xcodebuild test -scheme zimage.swift -destination 'platform=macOS' -only-testing:ZImageIntegrationTests/PipelineIntegrationTests -parallel-testing-enabled NO
+/// Run with: xcodebuild test -scheme zimage.swift-Package -destination 'platform=macOS' -only-testing:ZImageIntegrationTests/PipelineIntegrationTests -parallel-testing-enabled NO
 final class PipelineIntegrationTests: XCTestCase {
 
   /// Shared pipeline instance to avoid reloading model for each test

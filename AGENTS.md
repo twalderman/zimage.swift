@@ -5,6 +5,7 @@
   - is hosted at `https://github.com/huggingface/diffusers`
   - refer to it when analyzing the core library implementations in this project.
 - This project uses the base model `Tongyi-MAI/Z-Image-Turbo` by default; read the `docs/z-image-turbo.md` to understand the model structure.
+- When verifying changes, only run the unit tests via `-only-testing:ZImageTests`, leave the e2e and integration tests for users to manually verify.
 
 # Useful resources
 - For analyzing `.safetensors` file structure, you can use the python script `~/bin/stls.py`
