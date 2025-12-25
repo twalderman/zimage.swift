@@ -80,7 +80,7 @@ public struct ModelResolution {
     let modelId = String(parts[0])
     let revision = parts.count > 1 ? String(parts[1]) : defaultRevision
 
-    if let cachedURL = findCachedModel(modelId: modelId, requireWeights: requireWeights) {
+    if let cachedURL = findCachedModel(modelId: modelId, revision: revision, requireWeights: requireWeights) {
       return cachedURL
     }
 
@@ -111,7 +111,7 @@ public struct ModelResolution {
       )
     }
 
-    if let cachedURL = findCachedModel(modelId: defaultModelId, requireWeights: requireWeights) {
+    if let cachedURL = findCachedModel(modelId: defaultModelId, revision: defaultRevision, requireWeights: requireWeights) {
       return cachedURL
     }
 
@@ -144,58 +144,91 @@ public struct ModelResolution {
     return HubApi(downloadBase: hfCacheDir)
   }
 
-  private static func findCachedModel(modelId: String, requireWeights: Bool = true) -> URL? {
+  private static func findCachedModel(modelId: String, revision: String?, requireWeights: Bool = true) -> URL? {
     let fm = FileManager.default
     let cacheDir = getHuggingFaceCacheDirectory()
 
-    let modelCachePath = cacheDir
-      .appendingPathComponent("models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
-      .appendingPathComponent("snapshots")
-
-    guard fm.fileExists(atPath: modelCachePath.path) else {
-      return nil
-    }
-
-    guard let snapshots = try? fm.contentsOfDirectory(at: modelCachePath, includingPropertiesForKeys: nil) else {
-      return nil
-    }
-
-    for snapshot in snapshots {
-      let modelIndex = snapshot.appendingPathComponent("model_index.json")
-      let configFile = snapshot.appendingPathComponent("config.json")
-
-      let hasModelIndex = fm.fileExists(atPath: modelIndex.path)
-      let hasConfig = fm.fileExists(atPath: configFile.path)
-
-      guard hasModelIndex || hasConfig else {
-        continue
+    func directoryHasSafetensors(_ directory: URL) -> Bool {
+      let contents = (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+      if contents.contains(where: { $0.pathExtension == "safetensors" }) {
+        return true
       }
 
-      if requireWeights {
-        let contents = (try? fm.contentsOfDirectory(at: snapshot, includingPropertiesForKeys: nil)) ?? []
-        let hasSafetensors = contents.contains { $0.pathExtension == "safetensors" }
+      let subDirs = contents.filter { url in
+        var isDir: ObjCBool = false
+        return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+      }
 
-        let subDirs = contents.filter { url in
-          var isDir: ObjCBool = false
-          return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+      for subDir in subDirs {
+        if let subContents = try? fm.contentsOfDirectory(at: subDir, includingPropertiesForKeys: nil) {
+          if subContents.contains(where: { $0.pathExtension == "safetensors" }) {
+            return true
+          }
         }
+      }
 
-        var hasNestedSafetensors = false
-        for subDir in subDirs {
-          if let subContents = try? fm.contentsOfDirectory(at: subDir, includingPropertiesForKeys: nil) {
-            if subContents.contains(where: { $0.pathExtension == "safetensors" }) {
-              hasNestedSafetensors = true
-              break
+      return false
+    }
+
+    func directoryHasModelIndexOrConfig(_ directory: URL) -> Bool {
+      let modelIndex = directory.appendingPathComponent("model_index.json")
+      let configFile = directory.appendingPathComponent("config.json")
+      return fm.fileExists(atPath: modelIndex.path) || fm.fileExists(atPath: configFile.path)
+    }
+
+    func isValidCacheDirectory(_ directory: URL) -> Bool {
+      if requireWeights {
+        return directoryHasSafetensors(directory)
+      }
+      return directoryHasModelIndexOrConfig(directory)
+    }
+
+    // HuggingFace CLI / huggingface_hub cache layout:
+    // ~/.cache/huggingface/hub/models--ORG--REPO/snapshots/<commit>/
+    let repoCacheRoot = cacheDir
+      .appendingPathComponent("models--\(modelId.replacingOccurrences(of: "/", with: "--"))")
+    let snapshotsRoot = repoCacheRoot.appendingPathComponent("snapshots")
+
+    if fm.fileExists(atPath: snapshotsRoot.path) {
+      var preferredSnapshot: URL?
+
+      if let revision, !revision.isEmpty {
+        let trimmed = revision.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isCommitHash = trimmed.count == 40 && trimmed.allSatisfy { $0.isHexDigit }
+        if isCommitHash {
+          let candidate = snapshotsRoot.appendingPathComponent(trimmed)
+          if fm.fileExists(atPath: candidate.path), isValidCacheDirectory(candidate) {
+            preferredSnapshot = candidate
+          }
+        } else {
+          let refFile = repoCacheRoot.appendingPathComponent("refs").appendingPathComponent(trimmed)
+          if let commit = try? String(contentsOf: refFile, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !commit.isEmpty {
+            let candidate = snapshotsRoot.appendingPathComponent(commit)
+            if fm.fileExists(atPath: candidate.path), isValidCacheDirectory(candidate) {
+              preferredSnapshot = candidate
             }
           }
         }
-
-        if !hasSafetensors && !hasNestedSafetensors {
-          continue
-        }
       }
 
-      return snapshot
+      if let preferredSnapshot {
+        return preferredSnapshot
+      }
+
+      if let snapshots = try? fm.contentsOfDirectory(at: snapshotsRoot, includingPropertiesForKeys: nil) {
+        for snapshot in snapshots where isValidCacheDirectory(snapshot) {
+          return snapshot
+        }
+      }
+    }
+
+    // swift-transformers HubApi local layout:
+    // <downloadBase>/models/ORG/REPO/
+    let swiftTransformersPath = cacheDir.appendingPathComponent("models").appendingPathComponent(modelId)
+    if fm.fileExists(atPath: swiftTransformersPath.path), isValidCacheDirectory(swiftTransformersPath) {
+      return swiftTransformersPath
     }
 
     return nil
