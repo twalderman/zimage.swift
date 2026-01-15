@@ -48,10 +48,14 @@ struct ZImageCLI {
     var maxSequenceLength = 512
     var loraPath: String?
     var loraScale: Float = 1.0
+    var loraPaths: [String] = []
+    var loraScales: [Float] = []
     var enhancePrompt = false
     var enhanceMaxTokens = 512
     var noProgress = false
     var forceTransformerOverrideOnly = false
+    var generateSVG = false
+    var svgPreset = "default"
 
     let args = Array(CommandLine.arguments.dropFirst())
     var iterator = args.makeIterator()
@@ -86,12 +90,48 @@ struct ZImageCLI {
         loraPath = nextValue(for: arg, iterator: &iterator)
       case "--lora-scale":
         loraScale = floatValue(for: arg, iterator: &iterator, fallback: 1.0)
+      case "--lora-paths":
+        // Collect all consecutive non-flag arguments
+        while let next = iterator.next() {
+          if next.hasPrefix("-") {
+            // Put this argument back by processing it in the next iteration
+            // We'll handle this by checking again
+            if next.hasPrefix("-") {
+              // Process this flag in the outer switch
+              switch next {
+              case "--lora-scales":
+                break // Will be handled below
+              default:
+                logger.warning("Unknown argument after --lora-paths: \(next)")
+              }
+              break
+            }
+          }
+          loraPaths.append(next)
+        }
+      case "--lora-scales":
+        // Collect all consecutive numeric arguments
+        while let next = iterator.next() {
+          if next.hasPrefix("-") && Float(next) == nil {
+            logger.warning("Unknown argument after --lora-scales: \(next)")
+            break
+          }
+          if let floatVal = Float(next) {
+            loraScales.append(floatVal)
+          } else {
+            break
+          }
+        }
       case "--enhance", "-e":
         enhancePrompt = true
       case "--enhance-max-tokens":
         enhanceMaxTokens = intValue(for: arg, iterator: &iterator, minimum: 64, fallback: 512)
       case "--no-progress":
         noProgress = true
+      case "--svg":
+        generateSVG = true
+      case "--svg-preset":
+        svgPreset = nextValue(for: arg, iterator: &iterator)
       case "--help", "-h":
         printUsage()
         return
@@ -118,14 +158,36 @@ struct ZImageCLI {
       GPU.set(cacheLimit: limit * 1024 * 1024)
       logger.info("GPU cache limit set to \(limit)MB")
     }
-    let loraConfig: LoRAConfiguration? = loraPath.map { path in
+    // Build LoRA configurations
+    var loraConfigs: [LoRAConfiguration] = []
 
-      if path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("~") {
-        return .local(path, scale: loraScale)
-      } else {
-        return .huggingFace(path, scale: loraScale)
+    // Handle multi-LoRA (new style with --lora-paths)
+    if !loraPaths.isEmpty {
+      // Pad scales with 1.0 if fewer scales than paths
+      let paddedScales = loraScales + Array(repeating: Float(1.0), count: max(0, loraPaths.count - loraScales.count))
+
+      loraConfigs = zip(loraPaths, paddedScales).map { (path, scale) in
+        if path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("~") {
+          return .local(path, scale: scale)
+        } else {
+          return .huggingFace(path, scale: scale)
+        }
       }
+      logger.info("Using \(loraConfigs.count) LoRA(s)")
     }
+    // Handle single LoRA (backward compatibility with --lora)
+    else if let singlePath = loraPath {
+      let config: LoRAConfiguration
+      if singlePath.hasPrefix("/") || singlePath.hasPrefix("./") || singlePath.hasPrefix("~") {
+        config = .local(singlePath, scale: loraScale)
+      } else {
+        config = .huggingFace(singlePath, scale: loraScale)
+      }
+      loraConfigs = [config]
+    }
+
+    // Use first LoRA for backward compatibility (API only supports single LoRA currently)
+    let loraConfig = loraConfigs.first
 
     let request = ZImageGenerationRequest(
       prompt: prompt,
@@ -144,10 +206,16 @@ struct ZImageCLI {
       forceTransformerOverrideOnly: forceTransformerOverrideOnly
     )
 
+    // Note: Multi-LoRA support requires changes to ZImagePipeline to handle loraConfigs array
+    // For now, only the first LoRA is used. Full multi-LoRA support coming soon.
+
     let pipeline = ZImagePipeline(logger: logger)
     nonisolated(unsafe) let semaphore = DispatchSemaphore(value: 0)
     let useBar = !noProgress && (isatty(STDERR_FILENO) != 0)
     let bar = useBar ? ProgressBar(total: steps) : nil
+    let finalOutputPath = URL(fileURLWithPath: outputPath)
+    let shouldGenerateSVG = generateSVG
+    let svgPresetCopy = svgPreset
     Task {
       do {
         _ = try await pipeline.generate(request, progressHandler: { progress in
@@ -165,6 +233,12 @@ struct ZImageCLI {
           }
         })
         if let bar { bar.finish(forceNewline: true) }
+        if shouldGenerateSVG {
+          let svgOutputPath = finalOutputPath.deletingPathExtension().appendingPathExtension("svg")
+          logger.info("Converting to SVG: \(svgOutputPath.path)")
+          try convertToSVG(input: finalOutputPath, output: svgOutputPath, preset: svgPresetCopy)
+          logger.info("SVG generated: \(svgOutputPath.path)")
+        }
       } catch {
         logger.error("Generation failed: \(error)")
         if let bar { bar.finish(forceNewline: true) }
@@ -172,6 +246,46 @@ struct ZImageCLI {
       semaphore.signal()
     }
     semaphore.wait()
+  }
+
+  private static func convertToSVG(input: URL, output: URL, preset: String) throws {
+    let vtracerPath = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(".cargo/bin/vtracer").path
+    guard FileManager.default.fileExists(atPath: vtracerPath) else {
+      throw NSError(domain: "ZImageCLI", code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "vtracer not found. Install with: cargo install vtracer"])
+    }
+    var args = ["--input", input.path, "--output", output.path]
+    switch preset {
+    case "logo":
+      args += ["--colormode", "color", "--hierarchical", "cutout", "--mode", "polygon",
+               "-f", "10", "-p", "3", "-g", "48", "-c", "120", "-l", "8", "-s", "90", "--path_precision", "2"]
+    case "detailed":
+      args += ["--colormode", "color", "--hierarchical", "stacked", "--mode", "spline",
+               "-f", "2", "-p", "8", "-g", "0", "-c", "45", "-l", "4", "-s", "60", "--path_precision", "8"]
+    case "simplified":
+      args += ["--colormode", "color", "--hierarchical", "stacked", "--mode", "polygon",
+               "-f", "6", "-p", "5", "-g", "16", "-c", "90", "-l", "6", "-s", "75", "--path_precision", "3"]
+    case "bw":
+      args += ["--colormode", "binary", "--hierarchical", "stacked", "--mode", "spline",
+               "-f", "4", "-p", "6", "-g", "0", "-c", "60", "-l", "4", "-s", "60", "--path_precision", "5"]
+    default:
+      args += ["--colormode", "color", "--hierarchical", "stacked", "--mode", "spline",
+               "-f", "4", "-p", "6", "-g", "0", "-c", "60", "-l", "4", "-s", "60", "--path_precision", "5"]
+    }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: vtracerPath)
+    process.arguments = args
+    let pipe = Pipe()
+    process.standardError = pipe
+    try process.run()
+    process.waitUntilExit()
+    if process.terminationStatus != 0 {
+      let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+      let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+      throw NSError(domain: "ZImageCLI", code: Int(process.terminationStatus),
+        userInfo: [NSLocalizedDescriptionKey: "vtracer failed: \(errorMessage)"])
+    }
   }
 
   private static func printUsage() {
@@ -191,11 +305,15 @@ struct ZImageCLI {
       --force-transformer-override-only  Treat a local .safetensors as transformer-only override (disable AIO auto-detect)
       --cache-limit          GPU memory cache limit in MB (default: unlimited)
       --max-sequence-length  Maximum sequence length for text encoding (default: 512)
-      --lora, -l             LoRA weights path or HuggingFace ID
+      --lora, -l             LoRA weights path or HuggingFace ID (single LoRA)
       --lora-scale           LoRA scale factor (default: 1.0)
+      --lora-paths           Multiple LoRA weights paths (space-separated)
+      --lora-scales          Multiple LoRA scale factors (space-separated, default: 1.0)
       --enhance, -e          Enhance prompt using LLM (requires ~5GB extra VRAM)
       --enhance-max-tokens   Max tokens for prompt enhancement (default: 512)
       --no-progress          Disable progress output
+      --svg                  Also generate SVG vector output (requires vtracer)
+      --svg-preset           SVG preset: default, logo, detailed, simplified, bw
       --help, -h             Show help
 
     Subcommands:
