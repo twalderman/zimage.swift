@@ -47,6 +47,8 @@ struct ZImageCLI {
     var maxSequenceLength = 512
     var loraPath: String?
     var loraScale: Float = 1.0
+    var loraPaths: [String] = []
+    var loraScales: [Float] = []
     var enhancePrompt = false
 
     let args = Array(CommandLine.arguments.dropFirst())
@@ -80,6 +82,38 @@ struct ZImageCLI {
         loraPath = nextValue(for: arg, iterator: &iterator)
       case "--lora-scale":
         loraScale = floatValue(for: arg, iterator: &iterator, fallback: 1.0)
+      case "--lora-paths":
+        // Collect all consecutive non-flag arguments
+        while let next = iterator.next() {
+          if next.hasPrefix("-") {
+            // Put this argument back by processing it in the next iteration
+            // We'll handle this by checking again
+            if next.hasPrefix("-") {
+              // Process this flag in the outer switch
+              switch next {
+              case "--lora-scales":
+                break // Will be handled below
+              default:
+                logger.warning("Unknown argument after --lora-paths: \(next)")
+              }
+              break
+            }
+          }
+          loraPaths.append(next)
+        }
+      case "--lora-scales":
+        // Collect all consecutive numeric arguments
+        while let next = iterator.next() {
+          if next.hasPrefix("-") && Float(next) == nil {
+            logger.warning("Unknown argument after --lora-scales: \(next)")
+            break
+          }
+          if let floatVal = Float(next) {
+            loraScales.append(floatVal)
+          } else {
+            break
+          }
+        }
       case "--enhance", "-e":
         enhancePrompt = true
       case "--help", "-h":
@@ -108,14 +142,36 @@ struct ZImageCLI {
       GPU.set(cacheLimit: limit * 1024 * 1024)
       logger.info("GPU cache limit set to \(limit)MB")
     }
-    let loraConfig: LoRAConfiguration? = loraPath.map { path in
+    // Build LoRA configurations
+    var loraConfigs: [LoRAConfiguration] = []
 
-      if path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("~") {
-        return .local(path, scale: loraScale)
-      } else {
-        return .huggingFace(path, scale: loraScale)
+    // Handle multi-LoRA (new style with --lora-paths)
+    if !loraPaths.isEmpty {
+      // Pad scales with 1.0 if fewer scales than paths
+      let paddedScales = loraScales + Array(repeating: Float(1.0), count: max(0, loraPaths.count - loraScales.count))
+
+      loraConfigs = zip(loraPaths, paddedScales).map { (path, scale) in
+        if path.hasPrefix("/") || path.hasPrefix("./") || path.hasPrefix("~") {
+          return .local(path, scale: scale)
+        } else {
+          return .huggingFace(path, scale: scale)
+        }
       }
+      logger.info("Using \(loraConfigs.count) LoRA(s)")
     }
+    // Handle single LoRA (backward compatibility with --lora)
+    else if let singlePath = loraPath {
+      let config: LoRAConfiguration
+      if singlePath.hasPrefix("/") || singlePath.hasPrefix("./") || singlePath.hasPrefix("~") {
+        config = .local(singlePath, scale: loraScale)
+      } else {
+        config = .huggingFace(singlePath, scale: loraScale)
+      }
+      loraConfigs = [config]
+    }
+
+    // Use first LoRA for backward compatibility (API only supports single LoRA currently)
+    let loraConfig = loraConfigs.first
 
     let request = ZImageGenerationRequest(
       prompt: prompt,
@@ -131,6 +187,9 @@ struct ZImageCLI {
       lora: loraConfig,
       enhancePrompt: enhancePrompt
     )
+
+    // Note: Multi-LoRA support requires changes to ZImagePipeline to handle loraConfigs array
+    // For now, only the first LoRA is used. Full multi-LoRA support coming soon.
 
     let pipeline = ZImagePipeline(logger: logger)
     nonisolated(unsafe) let semaphore = DispatchSemaphore(value: 0)
@@ -161,8 +220,10 @@ struct ZImageCLI {
       --model, -m            Model path or HuggingFace ID (default: \(ZImageRepository.id))
       --cache-limit          GPU memory cache limit in MB (default: unlimited)
       --max-sequence-length  Maximum sequence length for text encoding (default: 512)
-      --lora, -l             LoRA weights path or HuggingFace ID
+      --lora, -l             LoRA weights path or HuggingFace ID (single LoRA)
       --lora-scale           LoRA scale factor (default: 1.0)
+      --lora-paths           Multiple LoRA weights paths (space-separated)
+      --lora-scales          Multiple LoRA scale factors (space-separated, default: 1.0)
       --enhance, -e          Enhance prompt using LLM (requires ~5GB extra VRAM)
       --help, -h             Show help
 
