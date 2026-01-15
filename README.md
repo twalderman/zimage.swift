@@ -1,24 +1,61 @@
-# Z-Image.swift
+# Z-Image.swift (twalderman fork)
 
 Swift port of [Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) using [mlx-swift](https://github.com/ml-explore/mlx-swift) for Apple Silicon.
 
+This fork adds **SVG vector output** and **multi-LoRA support**.
+
 **Try it with an easy UI:** [Lingdong Desktop App](https://lingdong.app/en)
 
-## Requirements
+## What's New in This Fork
 
-- macOS 14.0+
-- Apple Silicon
-- Swift 5.9+
+- **SVG Export** - Convert generated images to vector SVG format
+- **Multi-LoRA** - Apply multiple LoRA weights simultaneously
+- **Progress Control** - Disable progress output for scripting
+
+## System Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| **macOS** | 14.0+ (Sonoma or later) |
+| **Chip** | Apple Silicon (M1, M2, M3, M4) |
+| **Disk Space** | ~6GB for model files |
+| **Internet** | Required for first-run model download |
+| **Swift** | 5.9+ (only if building from source) |
 
 ## Installation
+
+### Pre-built Binary (Recommended)
+
+Download the latest release:
+
+```bash
+curl -LO https://github.com/twalderman/zimage.swift/releases/download/v0.2.0-tw/ZImageCLI-v0.2.0-tw-macos-arm64.zip
+unzip ZImageCLI-v0.2.0-tw-macos-arm64.zip
+sudo mv ZImageCLI /usr/local/bin/
+```
 
 ### Building from Source
 
 ```bash
-xcodebuild -scheme ZImageCLI -configuration Release -destination 'platform=macOS' -derivedDataPath .build/xcode
+git clone https://github.com/twalderman/zimage.swift.git
+cd zimage.swift
+swift build -c release
 ```
 
-The CLI binary will be available at `.build/xcode/Build/Products/Release/ZImageCLI`.
+The CLI binary will be available at `.build/release/ZImageCLI`.
+
+### Optional: Install vtracer for SVG Export
+
+SVG conversion requires [vtracer](https://github.com/visioncortex/vtracer):
+
+```bash
+# Install Rust if needed
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+
+# Install vtracer
+cargo install vtracer
+```
 
 ## Usage
 
@@ -47,11 +84,25 @@ ZImageCLI -h
 | `-m, --model` | Model path (dir or .safetensors) or HuggingFace ID | Tongyi-MAI/Z-Image-Turbo |
 | `--force-transformer-override-only` | Treat local .safetensors as transformer-only (disable AIO detection) | false |
 | `--cache-limit` | GPU memory cache limit in MB | unlimited |
-| `-l, --lora` | LoRA weights path or HuggingFace ID | - |
+| `-l, --lora` | LoRA weights path or HuggingFace ID (single) | - |
 | `--lora-scale` | LoRA scale factor | 1.0 |
+| `--lora-paths` | Multiple LoRA paths (space-separated) | - |
+| `--lora-scales` | Multiple LoRA scales (space-separated) | 1.0 each |
 | `-e, --enhance` | Enhance prompt using LLM | false |
 | `--enhance-max-tokens` | Max tokens for prompt enhancement | 512 |
 | `--no-progress` | Disable progress output | false |
+| `--svg` | Generate SVG vector output (requires vtracer) | false |
+| `--svg-preset` | SVG conversion preset | default |
+
+### SVG Presets
+
+| Preset | Use Case | Output Size |
+|--------|----------|-------------|
+| `default` | Balanced quality and file size | Medium |
+| `logo` | Logos, icons, flat graphics | Smallest |
+| `detailed` | Complex images, preserve detail | Largest |
+| `simplified` | Clean, minimal output | Small |
+| `bw` | Black and white conversion | Varies |
 
 ## AIO Checkpoint Usage
 
@@ -78,17 +129,50 @@ ZImageCLI -p "a futuristic city at night" -m mzbac/Z-Image-Turbo-8bit -o city.pn
 # With memory limit
 ZImageCLI -p "abstract art" --cache-limit 2048 -o art.png
 
-# With LoRA
+# With single LoRA
 ZImageCLI -p "a lion" --lora ostris/z_image_turbo_childrens_drawings -o lion.png
+
+# With multiple LoRAs (new in this fork)
+ZImageCLI -p "a beautiful portrait" \
+  --lora-paths style1.safetensors style2.safetensors \
+  --lora-scales 0.8 0.5 \
+  -o portrait.png
+
+# Generate with SVG output (new in this fork)
+ZImageCLI -p "minimalist mountain logo" --svg --svg-preset logo -o logo.png
+# Creates: logo.png and logo.svg
+
+# SVG with detailed preset for complex images
+ZImageCLI -p "intricate mandala pattern" --svg --svg-preset detailed -o mandala.png
+
+# Scripting without progress bars
+ZImageCLI -p "batch image" --no-progress -o batch.png
 ```
 
 ## LoRA
 
-Apply LoRA weights for style customization:
+Apply LoRA weights for style customization.
+
+### Single LoRA
 
 ```bash
 ZImageCLI -p "a lion" --lora ostris/z_image_turbo_childrens_drawings --lora-scale 1.0 -o lion.png
 ```
+
+### Multiple LoRAs (New in This Fork)
+
+Combine multiple LoRA styles:
+
+```bash
+ZImageCLI -p "a fantasy portrait" \
+  --lora-paths ~/loras/style.safetensors ~/loras/detail.safetensors \
+  --lora-scales 0.8 0.6 \
+  -o combined.png
+```
+
+- `--lora-paths`: Space-separated list of LoRA file paths or HuggingFace IDs
+- `--lora-scales`: Corresponding scale factors (defaults to 1.0 if not specified)
+- Scales are matched positionally to paths
 
 ### LoRA Example
 
@@ -104,6 +188,52 @@ ZImageCLI -p "a lion" --lora ostris/z_image_turbo_childrens_drawings --lora-scal
 <td><img src="examples/lora_lion.png" height="256"></td>
 </tr>
 </table>
+
+## SVG Export (New in This Fork)
+
+Convert generated images to scalable vector graphics using [vtracer](https://github.com/visioncortex/vtracer).
+
+### Installation
+
+```bash
+# Requires Rust toolchain
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+cargo install vtracer
+```
+
+### Usage
+
+```bash
+# Basic SVG generation
+ZImageCLI -p "geometric pattern" --svg -o pattern.png
+# Creates: pattern.png and pattern.svg
+
+# Logo preset (best for icons, logos, flat graphics)
+ZImageCLI -p "minimalist coffee cup logo, flat design, white background" \
+  --svg --svg-preset logo -o coffee_logo.png
+
+# Detailed preset (preserves complex details)
+ZImageCLI -p "intricate celtic knot pattern" \
+  --svg --svg-preset detailed -o celtic.png
+```
+
+### Preset Comparison
+
+| Preset | Best For | Colors | Detail Level |
+|--------|----------|--------|--------------|
+| `default` | General purpose | Full color | Medium |
+| `logo` | Logos, icons, UI elements | Simplified | Low (clean edges) |
+| `detailed` | Illustrations, complex art | Full color | High |
+| `simplified` | Clean graphics, web icons | Reduced | Low |
+| `bw` | Silhouettes, line art | Black & white | Medium |
+
+### Tips for Best SVG Results
+
+1. **Use high contrast prompts**: Add "HIGH CONTRAST, bold colors, white background"
+2. **Avoid gradients**: Add "flat design, no gradients" to prompts
+3. **Simple shapes work best**: Vector conversion excels with clean geometric forms
+4. **Logo preset for icons**: Produces the smallest, cleanest SVG files
 
 ## ControlNet
 
