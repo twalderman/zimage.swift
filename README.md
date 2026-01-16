@@ -26,23 +26,31 @@ This fork adds **SVG vector output** and **multi-LoRA support**.
 
 ### Pre-built Binary (Recommended)
 
-Download the latest release:
+Download and install the latest release:
 
 ```bash
-curl -LO https://github.com/twalderman/zimage.swift/releases/download/v0.2.0-tw/ZImageCLI-v0.2.0-tw-macos-arm64.zip
-unzip ZImageCLI-v0.2.0-tw-macos-arm64.zip
-sudo mv ZImageCLI /usr/local/bin/
+curl -LO https://github.com/twalderman/zimage.swift/releases/download/v0.2.0-tw/ZImageCLI-v0.2.0-tw-macos-arm64.tar.gz
+tar -xzf ZImageCLI-v0.2.0-tw-macos-arm64.tar.gz
+cd ZImageCLI-v0.2.0-tw
+sudo ./install.sh
 ```
+
+This installs:
+- Binary to `/usr/local/lib/zimage/ZImageCLI`
+- Metal libraries to `/usr/local/lib/zimage/mlx-swift_Cmlx.bundle`
+- Wrapper script to `/usr/local/bin/ZImageCLI`
 
 ### Building from Source
 
 ```bash
 git clone https://github.com/twalderman/zimage.swift.git
 cd zimage.swift
-swift build -c release
+xcodebuild -scheme ZImageCLI -configuration Release -destination 'platform=macOS' -derivedDataPath .build/xcode
 ```
 
-The CLI binary will be available at `.build/release/ZImageCLI`.
+The CLI binary and required Metal libraries will be in `.build/xcode/Build/Products/Release/`.
+
+> **Note**: SwiftPM builds (`swift build`) may have issues finding the Metal library on some systems. Xcode builds are recommended for production use.
 
 ### Optional: Install vtracer for SVG Export
 
